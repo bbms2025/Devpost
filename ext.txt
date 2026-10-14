@@ -1,0 +1,173 @@
+Product Requirements Specification (PRD)
+Local-First AI Chat Organizer
+Product status
+Specification finalized
+
+AI Chat Organizer
+A Chrome extension that makes long AI conversations easier to navigate, search, summarize, and export, without requiring conversation content to be sent to an external service.
+Initial platform
+Chrome
+
+Initial AI site
+ChatGPT
+
+Primary UI
+Persistent side panel
+
+Storage
+IndexedDB
+
+
+
+1. Product objective
+Solve the problem of navigating long AI conversations without repeatedly scrolling to locate important questions and answers.
+The extension will extract the currently open conversation, present a clickable outline, support search, maintain local organizational data, and export useful context for reuse in other AI tools.
+Primary success criterion: A user can open a long ChatGPT conversation, navigate directly to a selected message, search the conversation, and export useful context.
+2. Confirmed user decisions
+Area	Decision
+Product format	Chrome browser extension
+User interface	Persistent side panel
+Organization	Clickable outline of questions and responses
+Site compatibility	Cross-platform AI sites as the longer-term goal; ChatGPT first
+Adapter strategy	Common internal format with separate site adapters; final technical design remains open
+Message extraction	Extract user prompts and assistant responses from the currently open conversation
+Message identity	Prefer site-provided message IDs; use a local fallback and reconcile against DOM attributes and content when necessary
+Message structure	Store each complete conversation turn as one record containing both sides
+Refresh	Detect page changes, update incrementally, and provide full-refresh fallback
+Search	Current conversation only, using a local index
+Storage	IndexedDB
+Retention	Expire ordinary cached data after a configurable period; explicitly saved conversations persist until deleted
+AI summaries	No AI integration in version 1; use a basic non-AI summary
+Export	Markdown, JSON, and a copy-ready context prompt
+Security	Avoid external transmission, handle untrusted page content safely, minimize permissions and data collection
+Testing	Automated tests with saved HTML fixtures plus manual testing on live sites
+Release strategy	Working MVP first, then incremental improvements
+Distribution	Chrome Web Store
+3. MVP functional requirements
+
+FR-01 — Conversation detection
+Detect the supported AI site and identify the currently open conversation. Do not require historical conversation imports in the MVP.
+
+
+
+
+FR-02 — Message extraction and outline
+Extract user prompts and assistant responses, display them in a navigable outline, and jump to the corresponding original message when selected.
+
+
+
+
+FR-03 — Dynamic updates
+Detect conversation changes and reconcile extracted messages. If incremental updates fail, allow a full refresh. Show an error or incomplete-results indicator when extraction is unreliable.
+
+
+
+
+FR-04 — Local search
+Search extracted message text within the current conversation. Search must work without sending content to a remote service.
+
+
+
+
+FR-05 — Local organization and retention
+Store structured conversation and organizational records locally. Expire ordinary cached data according to user-configurable retention settings while preserving explicitly saved conversations until deletion.
+
+
+
+
+FR-06 — Export and summary
+Generate a basic non-AI summary and export Markdown, JSON, or a copy-ready context prompt. Exports should include useful conversation context without requiring an external AI provider.
+
+
+
+4. Data model
+The following is a recommended initial schema, not a confirmed database implementation.
+Record	Purpose
+Site	Site identifier and adapter metadata
+Conversation	Site, conversation reference, timestamps, retention and saved status
+Turn	User prompt, assistant response, ordering and local identity
+Bookmark	Reference to a conversation turn and optional note
+Summary	Basic summary content, generation timestamp and conversation reference
+TopicGroup	Optional grouping of turns for organization views
+SearchIndex	Local searchable text and associated record identifiers
+Settings	Retention preferences and user interface configuration
+A complete turn should be the primary stored unit because that matches your selected message structure. Individual message-level identity metadata can still be retained inside each turn to support navigation and reconciliation.
+Important identity rule: Never rely solely on a message's position. Insertions, deletions, edits, and regenerated responses can change positions. Prefer stable site IDs; use locally generated identifiers and reconciliation logic when they are unavailable.
+5. Non-functional requirements
+- Privacy: No external transmission of conversation content by default. No AI API integration in the MVP.
+- Permissions: Request access only to supported AI sites, with site access granted when needed.
+- Security: Treat webpage text as untrusted input. Avoid unsafe HTML rendering, unnecessary permissions, and accidental content disclosure.
+- Reliability: Detect extraction failures, indicate incomplete results, and offer retry or full-refresh recovery.
+- Performance: Keep the side panel responsive for long conversations; incremental processing is preferred over repeatedly parsing the entire page.
+- Maintainability: Isolate site-specific selectors and extraction logic in separate adapters.
+- Data ownership: Provide a clear way to delete locally stored data and manage retention.
+6. Contradictions and their resolution
+Potential conflict	Resolution
+Cross-platform ambition vs. ChatGPT-first launch	Build the shared extraction model and adapter boundary now, but launch with ChatGPT only.
+Summary feature vs. no AI in version 1	Include a basic non-AI summary. AI-generated summaries are deferred.
+Local-first privacy vs. possible future API keys	API-key authentication is a possible future option, not an MVP requirement. Any external processing must be explicit and opt-in.
+Site message IDs vs. reliable navigation	Use site IDs where available and local identity/reconciliation as a fallback.
+Local retention vs. persistent saved conversations	Expire ordinary cached data; preserve explicitly saved conversations until deletion.
+Rich organization model vs. narrow MVP success criterion	Design the data model for future bookmarks, topic groups, and timelines, but prioritize extraction, outline, search, and export.
+7. Recommended implementation phases
+1. Phase 1 — ChatGPT extraction prototype
+   - Detect the current conversation.
+   - Extract user prompts and assistant responses.
+   - Build the internal turn representation.
+   - Implement a clickable outline and message navigation.
+   Exit gate: Navigation works against real ChatGPT conversations, including long conversations and messages without stable site IDs.
+2. Phase 2 — Side panel and extraction reliability
+   - Build the persistent side-panel UI.
+   - Detect DOM changes and reconcile turns.
+   - Add full-refresh recovery and extraction status indicators.
+   - Test edits, regenerated answers, and dynamic loading.
+   Exit gate: Extraction failures are visible and recoverable.
+3. Phase 3 — IndexedDB, search, and retention
+   - Add the local schema and search index.
+   - Implement saved conversations and configurable expiry.
+   - Add local deletion and retention controls.
+   Exit gate: Local data persists correctly and expiry does not remove explicitly saved conversations.
+4. Phase 4 — Summaries and export
+   - Generate basic non-AI summaries.
+   - Export Markdown, JSON, and copy-ready context.
+   - Validate export formatting and data completeness.
+   Exit gate: Exported files are valid and usable independently of the extension.
+5. Phase 5 — Testing and Chrome Web Store release
+   - Run automated tests against saved HTML fixtures.
+   - Perform manual tests against live ChatGPT.
+   - Review permissions, privacy disclosures, and data deletion.
+   - Prepare the store listing and release package.
+   Exit gate: MVP acceptance criteria pass and privacy behavior matches the documented policy.
+6. Phase 6 — Expand site support
+   - Add Claude and Gemini adapters.
+   - Validate extraction and navigation independently for each site.
+   - Add additional AI sites based on demand and adapter reliability.
+8. MVP acceptance checklist
+These are recommended release gates. They should be measured during testing, not assumed to have been achieved.
+Release readiness checklist
+0 of 11
+
+[ ] Detect the current ChatGPT conversation and extract user prompts and assistant responses.
+[ ] Display an outline in the persistent side panel.
+[ ] Navigate to the correct original turn when an outline entry is selected.
+[ ] Reconcile dynamic page changes without silently duplicating or losing turns.
+[ ] Display an incomplete-results warning and offer retry when extraction fails.
+[ ] Search extracted text locally within the current conversation.
+[ ] Persist saved conversation data locally and enforce retention rules.
+[ ] Generate a basic non-AI summary.
+[ ] Export valid Markdown, JSON, and a copy-ready context prompt.
+[ ] Verify that conversation content is not transmitted externally by the extension.
+[ ] Pass fixture-based tests and manual live-site tests.
+ 
+
+9. Open decisions
+These are not blockers to the PRD, but should be resolved before implementation:
+1. Framework: React with TypeScript, vanilla JavaScript, or another stack. Recommendation: choose based on the complexity of the side panel and testing needs.
+2. Adapter implementation: Exact extraction and navigation strategy for ChatGPT's changing DOM.
+3. Retention defaults: Default expiry period and whether saved conversations can optionally expire.
+4. Performance targets: Maximum supported conversation size and acceptable outline/search response times.
+5. UI details: Outline grouping, keyboard shortcuts, dark mode, and bookmark interaction.
+6. Scope of the first release: Whether topic groups, timelines, and bookmarks are included immediately or deferred beyond the core success criterion.
+Final recommendation
+Treat reliable extraction and message navigation as the technical foundation. Do not start with AI summarization, extensive analytics, or support for several AI sites simultaneously. First prove that the extension can correctly extract a long ChatGPT conversation, maintain a useful outline as the page changes, and navigate back to the right original turn.
+Once that works, IndexedDB, search, summaries, exports, and broader site compatibility can be layered on without compromising the product's core purpose.
