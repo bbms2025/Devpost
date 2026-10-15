@@ -16,7 +16,7 @@ function previewText(text: string): string {
   return `${text.slice(0, 117).trimEnd()}...`;
 }
 
-interface RegistryRecord {
+export interface RegistryRecord {
   id: string;
   siteId?: string;
   speaker: Speaker;
@@ -33,6 +33,11 @@ export class MessageIdentityService {
   reset() {
     this.records.clear();
     this.localSeq = 1;
+  }
+
+  /** Expose a record for fresh DOM lookups in ExtractionOrchestrator */
+  getRecord(id: string): RegistryRecord | undefined {
+    return this.records.get(id);
   }
 
   register(el: HTMLElement, streaming: boolean): MessageEntry | null {

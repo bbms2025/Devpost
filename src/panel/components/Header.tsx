@@ -8,10 +8,10 @@ interface HeaderProps {
 }
 
 const STATUS_TEXT: Record<ExtractionStatus, string> = {
-  waiting: 'Open a ChatGPT conversation, then click load',
+  waiting: 'Click ↺ to load the conversation',
   reading: 'Reading conversation\u2026',
   ready: 'Ready',
-  incomplete: 'Outline may be incomplete',
+  incomplete: 'Outline may be incomplete — try reloading',
 };
 
 function LoadIcon() {
