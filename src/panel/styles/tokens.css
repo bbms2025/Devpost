@@ -1,0 +1,37 @@
+/* Light theme (default) */
+:root,
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-hover: #f5f5f5;
+  --bg-selected: #ebebeb;
+  --text-primary: #0d0d0d;
+  --text-secondary: #6e6e6e;
+  --divider: #e5e5e5;
+  --accent: #2563eb;
+  --status-text: #6e6e6e;
+  --highlight-color: rgba(37, 99, 235, 0.25);
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+  --bg-primary: #1e1e1e;
+  --bg-hover: #2a2a2a;
+  --bg-selected: #333333;
+  --text-primary: #ececec;
+  --text-secondary: #8e8e8e;
+  --divider: #2f2f2f;
+  --accent: #3b82f6;
+  --status-text: #8e8e8e;
+  --highlight-color: rgba(59, 130, 246, 0.25);
+}
+
+/* Navigation highlight animation — applied by content script to ChatGPT message elements */
+@keyframes aco-highlight-fade {
+  0%   { background-color: var(--highlight-color, rgba(59, 130, 246, 0.3)); }
+  100% { background-color: transparent; }
+}
+
+.aco-highlight {
+  animation: aco-highlight-fade 800ms ease-out forwards;
+  border-radius: 4px;
+}
