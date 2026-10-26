@@ -1,50 +1,90 @@
-# Learn AI Basics — skills
+# AI Chat Organizer
 
-Devpost Learn hackathon curriculum, packaged as agent skills. Works in any harness that reads `SKILL.md` (Claude Code, Codex, Cursor, …).
+A Chrome extension that turns a long ChatGPT conversation into a clickable, navigable outline — without leaving the page or sending anything to an external service.
 
-## Install
+## What It Does
 
-```
-npx skills add challengepost/learn-ai-basics --all -y
-```
+Open any ChatGPT conversation, click **Load** in the side panel, and instantly see a chronological outline of every message. Click any entry to jump directly to that message. Bookmark AI answers into named collections and export them as Markdown, JSON, or plain text.
 
-Prerequisites: **node** and **git** installed, and an empty folder set aside for your project.
+**Features:**
+- Clickable conversation outline in Chrome's native side panel
+- Click-to-navigate with smooth scroll and highlight animation
+- Live updates as the conversation grows (MutationObserver)
+- Extraction status indicator (waiting / reading / ready / incomplete)
+- Bookmark ChatGPT answers into named collections (stored in IndexedDB)
+- Browse saved collections and answers
+- Export collections to `.md`, `.json`, or `.txt`
+- Light and dark theme support
+- 100% local — no external API, no server, no data transmitted
 
-## The sequence
+## Demo
 
-| Skill | What happens | Output |
-|---|---|---|
-| `1-start` | Understand the six steps, check your workspace, and introduce your idea and experience | `devpost/learner-profile.md` |
-| `2-scope` | Find or sharpen your idea, identify its kernel, define "done," and keep it proof-of-concept sized | `devpost/scope.md` |
-| `3-prd` | Learner-led product interview grounded in scope: screens, layout, visual style, behavior, edge cases, and a firm now/later boundary. No code talk | `devpost/prd.md` |
-| `4-spec` | How it's built—clarify an unknown, discuss options or recommendations, and agree on a technical plan | `devpost/spec.md` |
-| `5-build` | Verified, committed build steps, hands-on review and revisions, then a short, personalized learning wrap-up | `devpost/checklist.md`, your app, `devpost/app-map.html` |
-| `6-ship` | Prepare the required demo video and public GitHub repository, then write your own submission and exit-survey answers | video, public repository, learner-written submission |
+> Open a ChatGPT conversation → click **Load** → click any entry to jump to that message → bookmark answers into collections → export for later.
 
-**What to expect:** about 2–4 hours of active work, ending in a small working proof of concept — not a product. You learn one process: plan before you build through flipped interaction. This is a beginner-oriented curriculum. Onboarding asks about plan-first/spec-driven experience separately from coding experience: newcomers keep guided support; familiar users can keep explanations concise or batch a few related questions. Those preferences carry forward. The agent interviews, probes, and organizes; you supply the ideas and decisions. Scope, PRD, and spec usually aim for four or five meaningful exchanges, counting existing answers, and draft sooner when the important questions are answered. You can explore further if useful. A clear "looks good" approves a displayed plan—no second sign-off. PRD includes 1–2 relevant design questions so visual choices don't default to generic AI styling. Optional HTML companions for scope, PRD, and spec use diagrams and interactive reveals—not just rendered Markdown. The build checklist stays Markdown-only. Speech-to-text helps a lot.
+## Installation (Developer Mode)
 
-**Build modes:** learn mode includes a hands-on check and code orientation after every slice. Fast mode keeps verification but reduces explanation and pauses for useful early feedback and final review; extra checkpoints are added only when valuable. A tiny, single-slice build can combine those reviews. Your mode is remembered on resume and can be changed.
+**Prerequisites:** Node.js 18+, npm, Chrome 114+
 
-**A learning takeaway:** name one thing you'd like to practice or understand, if you have one in mind. After final review and revisions, a three-to-five-minute wrap-up connects a real project moment to a practice you can reuse. Newcomers follow one action through 2–3 code locations, with an optional tiny edit. Familiar plan-first users can instead revisit a real uncertainty, verified change, or planning decision. Practice already completed counts—no repeat exercise. Everyone receives a compact app map with code pointers and a project-grounded practice to reuse. A short reflection is optional; this isn't a quiz or another approval gate.
-
-**Shipping:** a short demo video **and** a public GitHub repository are required; deployment and peer feedback are optional. Write your own project name, short description, other submission fields, and exit-survey answers. The agent can interview you and identify gaps, but only correct spelling and grammar in your copy—never draft or rewrite it. Any optional Discord post or peer feedback must also be human-written. Setup excludes `devpost/learner-profile.md` and local credential files from commits by default; this does not make AI conversations private or remove already-tracked content. Before publishing, still check files and history for secrets and private context. Finish by submitting on Devpost.
-
-Invoke each skill by name in your agent. Starting a fresh conversation between skills is fine — the `devpost/` files carry the context forward.
-
-## Layout
-
-```
-skills/<name>/SKILL.md          the skill
-skills/<name>/templates/        document templates the skill fills in
-skills/<name>/references/       deeper material the skill reads on demand
+```bash
+npm install
+npm run build
 ```
 
-## How progress is tracked
+Then in Chrome:
+1. Go to `chrome://extensions`
+2. Enable **Developer Mode** (top right)
+3. Click **Load unpacked**
+4. Select the `dist/` folder
 
-There is no separate progress file. The `devpost/` folder is the state:
+The extension icon appears in your toolbar. Open a ChatGPT conversation, click the side panel button, and click **Load**.
 
-- Each planning document (`scope.md`, `prd.md`, `spec.md`, `checklist.md`) carries `status: draft | approved` in its frontmatter. Skills save a draft as soon as one exists and flip it to `approved` when the learner clearly approves the displayed plan. "Looks good" counts; silence does not, and no second sign-off is needed.
-- `learner-profile.md` holds experience, simple pacing preferences, and optional learning context—not progress. It stays out of commits by default.
-- `checklist.md` records the build mode and tracks slices, planned hands-on checkpoints, final review, and learning wrap-up/app map through its `- [ ]` / `- [x]` boxes, plus the git log. The wrap-up retains the `Code Tour and App Map` heading for routing compatibility; completed older tours still count. Checked slices alone do not mean the build is complete.
+## Development
 
-Every skill opens by inspecting the project's `devpost/`, checking substantive content and status lines (never mistaking curriculum templates or placeholder copies for progress), saying back where the learner is, and routing — forward to the right skill if they're behind, or to the first unfinished thing if they're mid-way. So a fresh conversation at any point costs nothing.
+```bash
+npm run dev
+```
+
+Load the `dist/` folder as an unpacked extension. Vite rebuilds on changes.
+
+## Tech Stack
+
+| Layer | Choice |
+|---|---|
+| Language | TypeScript 5 |
+| UI | React 18 |
+| Build | Vite 5 |
+| Styling | CSS Modules + CSS custom properties |
+| Persistence | IndexedDB via Dexie.js |
+| Extension | Chrome Manifest V3, Side Panel API |
+
+## Project Structure
+
+```
+src/
+  background/     Chrome service worker — tab ID bridge
+  content/        Content script — DOM extraction, navigation, MutationObserver
+    adapters/     ChatGPTAdapter — isolated DOM reading strategy
+  panel/          React side panel app
+    components/   UI components
+    services/     BookmarkService (IndexedDB), ExportService
+    styles/       CSS tokens (light/dark theme), global styles
+  shared/         Shared types and message contracts
+devpost/          Planning docs — scope, PRD, spec, bookmark spec
+```
+
+## Privacy
+
+All data stays on your device. No conversation content is ever sent to a server, API, or third-party service. Saved bookmarks live in Chrome's IndexedDB, scoped to your local profile.
+
+## Planning Docs
+
+The `devpost/` folder contains the full planning trail:
+
+- [`devpost/scope.md`](devpost/scope.md) — idea, kernel, POC boundary
+- [`devpost/prd.md`](devpost/prd.md) — product requirements
+- [`devpost/spec.md`](devpost/spec.md) — technical spec
+- [`devpost/bookmark-feature-spec.md`](devpost/bookmark-feature-spec.md) — bookmark feature spec
+
+## License
+
+MIT

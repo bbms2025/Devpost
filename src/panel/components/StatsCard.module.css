@@ -1,0 +1,94 @@
+.card {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.statsRow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  justify-content: center;
+}
+
+.statIcon {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.statValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.divider {
+  width: 1px;
+  height: 18px;
+  background-color: var(--divider);
+  margin: 0 2px;
+}
+
+/* Stale state */
+.card.stale {
+  background-color: rgba(251, 191, 36, 0.07);
+  border-bottom-color: rgba(251, 191, 36, 0.25);
+}
+
+.staleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.staleIcon {
+  display: flex;
+  align-items: center;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.staleMsg {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--warning);
+  flex: 1;
+  line-height: 1.3;
+}
+
+.reloadBtn {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--accent);
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 3px 9px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.reloadBtn:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+}

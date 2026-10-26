@@ -1,7 +1,12 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { Header } from './components/Header';
 import { OutlineList } from './components/OutlineList';
+import { StatsCard } from './components/StatsCard';
+import { SaveBookmarkModal } from './components/SaveBookmarkModal';
+import { SavedViewsModal } from './components/SavedViewsModal';
+import { Toast } from './components/Toast';
 import { useOutlineStore } from './store';
+import type { MessageEntry } from '../shared/types';
 import type { ContentMessage } from '../shared/messages';
 import type { BackgroundRequest, BackgroundResponse } from '../shared/messages';
 
@@ -22,52 +27,47 @@ async function getActiveTabId(): Promise<number> {
   });
 }
 
-async function sendPanelReady(): Promise<boolean> {
-  try {
-    const tabId = await getActiveTabId();
-    await chrome.tabs.sendMessage(tabId, { type: 'PANEL_READY' });
-    console.log('[AI Chat Organizer] PANEL_READY sent to tab', tabId);
-    return true;
-  } catch {
-    // Content script not ready yet — will retry or wait for CONTENT_SCRIPT_READY
-    return false;
-  }
-}
-
 export function PanelApp() {
   const [state, dispatch] = useOutlineStore();
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const extractionStartedRef = useRef(false);
+  
+  // Bookmark modal state
+  const [bookmarkEntry, setBookmarkEntry] = useState<MessageEntry | null>(null);
+  
+  // Saved views modal state
+  const [isSavedViewsOpen, setIsSavedViewsOpen] = useState(false);
+  
+  // Toast state
+  const [toastMessage, setToastMessage] = useState<string>('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
 
+  // Listen for messages relayed from the content script via the background
   useEffect(() => {
-    const applyMessage = (message: ContentMessage) => {
+    const listener = (message: ContentMessage & { relayed?: boolean }) => {
+      // Only process messages that were relayed by the background worker
+      if (!message.relayed) return;
+
       switch (message.type) {
         case 'CONTENT_SCRIPT_READY':
-          // Content script just loaded — send PANEL_READY now so it starts extracting
-          console.log('[AI Chat Organizer] Content script announced ready — triggering extraction.');
-          if (retryTimerRef.current) {
-            clearTimeout(retryTimerRef.current);
-            retryTimerRef.current = null;
-          }
-          extractionStartedRef.current = false; // reset so we send fresh PANEL_READY
-          sendPanelReady().then(reached => {
-            if (reached) extractionStartedRef.current = true;
-          });
+          dispatch({ type: 'SET_STATUS', status: 'waiting' });
           break;
         case 'OUTLINE_RESET':
-          dispatch({ type: 'RESET' });
+          dispatch({ type: 'RESET', generation: message.generation });
           break;
         case 'STATUS_UPDATE':
-          dispatch({ type: 'SET_STATUS', status: message.status });
+          dispatch({ type: 'SET_STATUS', status: message.status, generation: message.generation });
           break;
         case 'MESSAGE_BATCH':
-          dispatch({ type: 'APPEND_ENTRIES', entries: message.entries });
+          dispatch({
+            type: 'APPEND_ENTRIES',
+            entries: message.entries,
+            generation: message.generation,
+          });
           break;
         case 'MESSAGE_ADDED':
-          dispatch({ type: 'ADD_ENTRY', entry: message.entry });
+          dispatch({ type: 'ADD_ENTRY', entry: message.entry, generation: message.generation });
           break;
         case 'MESSAGE_UPDATED':
-          dispatch({ type: 'UPDATE_ENTRY', entry: message.entry });
+          dispatch({ type: 'UPDATE_ENTRY', entry: message.entry, generation: message.generation });
           break;
         case 'NAVIGATE_OK':
           dispatch({ type: 'SET_SELECTED', id: message.id });
@@ -77,63 +77,116 @@ export function PanelApp() {
           break;
       }
     };
+    chrome.runtime.onMessage.addListener(listener);
 
-    chrome.runtime.onMessage.addListener(applyMessage);
+    // Reset state when panel opens (clear any stale data from previous session)
+    dispatch({ type: 'RESET', generation: 0 });
 
-    // Also try immediately — if the content script loaded before the panel opened
-    let cancelled = false;
-    async function tryNotify() {
-      const reached = await sendPanelReady();
-      if (cancelled) return;
-      if (reached) {
-        extractionStartedRef.current = true;
-      } else {
-        // Retry until content script loads (CONTENT_SCRIPT_READY will also trigger it)
-        retryTimerRef.current = setTimeout(() => {
-          if (!cancelled) tryNotify();
-        }, 2000);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, [dispatch]);
+
+  const handleLoad = useCallback(async () => {
+    let attempts = 0;
+    const tryLoad = async (): Promise<void> => {
+      try {
+        const tabId = await getActiveTabId();
+        await chrome.tabs.sendMessage(tabId, { type: 'LOAD_CONVERSATION' });
+      } catch {
+        if (++attempts < 5) {
+          await new Promise((r) => setTimeout(r, 1000));
+          await tryLoad();
+        } else {
+          dispatch({ type: 'SET_STATUS', status: 'waiting' });
+        }
       }
-    }
-
-    tryNotify();
-
-    return () => {
-      cancelled = true;
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      chrome.runtime.onMessage.removeListener(applyMessage);
     };
+    await tryLoad();
   }, [dispatch]);
 
   const handleNavigate = useCallback(async (id: string) => {
     try {
       const tabId = await getActiveTabId();
       await chrome.tabs.sendMessage(tabId, { type: 'NAVIGATE_TO', id });
-    } catch (err) {
-      console.warn('[AI Chat Organizer] Navigation failed:', err);
+    } catch {
       dispatch({ type: 'SET_ENTRY_FAILED', id });
-    }
-  }, [dispatch]);
-
-  const handleLoad = useCallback(async () => {
-    try {
-      dispatch({ type: 'RESET' });
-      const tabId = await getActiveTabId();
-      await chrome.tabs.sendMessage(tabId, { type: 'LOAD_CONVERSATION' });
-    } catch (err) {
-      console.warn('[AI Chat Organizer] Load failed:', err);
     }
   }, [dispatch]);
 
   const isLoading = state.status === 'reading';
 
+  const handleBookmark = useCallback((entry: MessageEntry) => {
+    setBookmarkEntry(entry);
+  }, []);
+
+  const handleBookmarkSuccess = useCallback((collectionTitle: string) => {
+    setToastType('success');
+    setToastMessage(`Saved to ${collectionTitle}`);
+  }, []);
+
+  const handleBookmarkClose = useCallback(() => {
+    setBookmarkEntry(null);
+  }, []);
+
+  const handleToastDismiss = useCallback(() => {
+    setToastMessage('');
+  }, []);
+
+  const handleOpenSavedViews = useCallback(() => {
+    setIsSavedViewsOpen(true);
+  }, []);
+
+  const handleCloseSavedViews = useCallback(() => {
+    setIsSavedViewsOpen(false);
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      <Header status={state.status} onLoad={handleLoad} isLoading={isLoading} />
+      <Header 
+        status={state.status} 
+        onLoad={handleLoad} 
+        isLoading={isLoading}
+        onOpenSavedViews={handleOpenSavedViews}
+      />
+      {state.stats && (
+        <StatsCard
+          stats={state.stats}
+          stale={state.staleNavigation}
+          onReload={handleLoad}
+        />
+      )}
       <OutlineList
+        key={state.generation}
         entries={state.entries}
         selectedId={state.selectedId}
         onNavigate={handleNavigate}
+        onBookmark={handleBookmark}
       />
+      
+      {/* Bookmark Modal */}
+      {bookmarkEntry && (
+        <SaveBookmarkModal
+          entry={bookmarkEntry}
+          onClose={handleBookmarkClose}
+          onSuccess={handleBookmarkSuccess}
+        />
+      )}
+      
+      {/* Saved Views Modal */}
+      {isSavedViewsOpen && (
+        <SavedViewsModal
+          onClose={handleCloseSavedViews}
+          onNavigateToSource={handleNavigate}
+        />
+      )}
+      
+      {/* Toast Notifications */}
+      {toastMessage && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onDismiss={handleToastDismiss}
+        />
+      )}
     </div>
   );
 }

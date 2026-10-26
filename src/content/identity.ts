@@ -56,7 +56,11 @@ export class MessageIdentityService {
       return this.toEntry(existing, text, streaming);
     }
 
-    const id = siteId ?? `local-${this.localSeq++}`;
+    const threadKey = (typeof location !== 'undefined' ? location.pathname : 'thread').replace(
+      /\W+/g,
+      ''
+    ) || 'thread';
+    const id = siteId ?? `local-${threadKey}-${this.localSeq++}`;
     const record: RegistryRecord = {
       id,
       siteId,
@@ -112,6 +116,7 @@ export class MessageIdentityService {
       siteId: record.siteId,
       speaker: record.speaker,
       preview: streaming && !text ? 'Generating…' : previewText(text),
+      content: text, // full text for bookmarks
       contentFingerprint: record.contentFingerprint,
       status: streaming ? 'generating' : 'ready',
     };

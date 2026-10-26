@@ -3,10 +3,20 @@ import { ExtractionOrchestrator } from './extraction';
 
 const orchestrator = new ExtractionOrchestrator();
 
+// Guard: check if the extension context is still valid before any chrome API call
+function isContextValid(): boolean {
+  try {
+    return !!chrome.runtime?.id;
+  } catch {
+    return false;
+  }
+}
+
 chrome.runtime.onMessage.addListener((message: PanelMessage) => {
+  if (!isContextValid()) return false;
+
   if (message.type === 'PANEL_READY') {
-    console.log('[AI Chat Organizer] PANEL_READY received — content script ready, waiting for manual load.');
-    // Don't auto-extract — user triggers via the Load button
+    // Panel opened — no auto-extract, user clicks Load
   }
   if (message.type === 'LOAD_CONVERSATION') {
     console.log('[AI Chat Organizer] LOAD_CONVERSATION received — starting extraction.');
@@ -20,11 +30,12 @@ chrome.runtime.onMessage.addListener((message: PanelMessage) => {
 
 console.log('[AI Chat Organizer] Content script loaded on', location.href);
 
-// Announce to the panel that we're ready — handles the case where
-// the content script loads AFTER the panel has already opened and
-// sent PANEL_READY (which went unheard). The panel listens for this
-// message and triggers extraction on receipt.
-chrome.runtime.sendMessage({ type: 'CONTENT_SCRIPT_READY' }, () => {
-  // Suppress "no listeners" error — panel may not be open yet, that's fine
-  void chrome.runtime.lastError;
-});
+// Announce to panel that content script is ready
+function announceReady() {
+  if (!isContextValid()) return;
+  chrome.runtime.sendMessage({ type: 'CONTENT_SCRIPT_READY' }, () => {
+    void chrome.runtime.lastError;
+  });
+}
+
+announceReady();

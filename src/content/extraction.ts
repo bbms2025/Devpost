@@ -1,14 +1,30 @@
 import type { ContentMessage } from '../shared/messages';
-import type { MessageEntry } from '../shared/types';
+import type { ExtractionStatus, MessageEntry } from '../shared/types';
 import { ChatGPTAdapter } from './adapters/chatgpt';
 import { MessageIdentityService, fingerprintText } from './identity';
 
 const BATCH_SIZE = 25;
 const DEBOUNCE_MS = 300;
 const HIGHLIGHT_MS = 800;
-const URL_POLL_MS = 500; // poll for SPA navigation
+const URL_POLL_MS = 500;
+
+function isContextValid(): boolean {
+  try {
+    return !!chrome.runtime?.id;
+  } catch {
+    return false;
+  }
+}
+
+/** Conversation id from /c/{id} only — ignore query-string churn during load. */
+function conversationKey(): string {
+  const path = location.pathname.replace(/\/+$/, '') || '/';
+  const chatId = path.match(/\/c\/([a-zA-Z0-9-]+)/);
+  return chatId ? chatId[1] : path;
+}
 
 function postToPanel(message: ContentMessage) {
+  if (!isContextValid()) return;
   chrome.runtime.sendMessage(message, () => {
     void chrome.runtime.lastError;
   });
@@ -31,9 +47,7 @@ function injectHighlightStyles() {
   document.documentElement.appendChild(style);
 }
 
-/** Find ChatGPT's scrollable conversation container */
 function findScrollContainer(): HTMLElement | null {
-  // The main scroll area — look for a tall scrollable div inside main
   const candidates = Array.from(
     document.querySelectorAll<HTMLElement>('main [class*="overflow"], main [style*="overflow"]')
   ).concat(
@@ -50,7 +64,6 @@ function findScrollContainer(): HTMLElement | null {
     }
   }
 
-  // Fallback: find the element that is actually scrolled
   const allScrollable = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((el) => {
     if (el === document.body || el === document.documentElement) return false;
     const s = window.getComputedStyle(el);
@@ -60,15 +73,11 @@ function findScrollContainer(): HTMLElement | null {
     );
   });
 
-  // Return the tallest scrollable element (most likely the conversation)
   return allScrollable.sort((a, b) => b.scrollHeight - a.scrollHeight)[0] ?? null;
 }
 
-/** Scroll to the top, wait for ChatGPT to render older messages, then restore */
 async function scrollToLoadAll(container: HTMLElement): Promise<void> {
   const originalScrollTop = container.scrollTop;
-
-  // Scroll to top incrementally so ChatGPT loads virtualized messages
   let lastScrollHeight = container.scrollHeight;
   container.scrollTop = 0;
 
@@ -76,16 +85,13 @@ async function scrollToLoadAll(container: HTMLElement): Promise<void> {
     await new Promise((r) => setTimeout(r, 300));
     if (container.scrollHeight > lastScrollHeight) {
       lastScrollHeight = container.scrollHeight;
-      container.scrollTop = 0; // keep scrolling up to load more
+      container.scrollTop = 0;
     } else {
-      break; // no new content loaded
+      break;
     }
   }
 
-  // Small extra wait for React to render
   await new Promise((r) => setTimeout(r, 300));
-
-  // Restore original position
   container.scrollTop = originalScrollTop;
 }
 
@@ -95,20 +101,43 @@ export class ExtractionOrchestrator {
   private observer: MutationObserver | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private urlPollTimer: ReturnType<typeof setInterval> | null = null;
-  private lastPath = location.pathname;
+  private lastConversation = conversationKey();
   private lastSent = new Map<string, Pick<MessageEntry, 'contentFingerprint' | 'status' | 'preview'>>();
   private extracting = false;
+  private generation = 0;
+
+  private isCurrent(generation: number): boolean {
+    return generation === this.generation;
+  }
+
+  private emit(
+    message:
+      | { type: 'OUTLINE_RESET' }
+      | { type: 'STATUS_UPDATE'; status: ExtractionStatus }
+      | { type: 'MESSAGE_BATCH'; entries: MessageEntry[] }
+      | { type: 'MESSAGE_ADDED'; entry: MessageEntry }
+      | { type: 'MESSAGE_UPDATED'; entry: MessageEntry }
+      | { type: 'NAVIGATE_OK'; id: string }
+      | { type: 'NAVIGATE_FAILED'; id: string; reason: string },
+    generation: number = this.generation
+  ) {
+    if (!this.isCurrent(generation)) return;
+    postToPanel({ ...message, generation } as ContentMessage);
+  }
 
   start() {
+    this.generation += 1;
+    const generation = this.generation;
     injectHighlightStyles();
     this.identity.reset();
     this.lastSent.clear();
-    this.lastPath = location.pathname;
-    postToPanel({ type: 'OUTLINE_RESET' });
-    postToPanel({ type: 'STATUS_UPDATE', status: 'reading' });
+    this.lastConversation = conversationKey();
+    this.extracting = false;
+    this.emit({ type: 'OUTLINE_RESET' }, generation);
+    this.emit({ type: 'STATUS_UPDATE', status: 'reading' }, generation);
     this.observe();
     this.watchUrl();
-    void this.extractWithScroll();
+    void this.extractWithScroll(generation);
   }
 
   stop() {
@@ -118,18 +147,12 @@ export class ExtractionOrchestrator {
     if (this.urlPollTimer) clearInterval(this.urlPollTimer);
   }
 
-  // Fix 3: re-query the DOM fresh at click time instead of trusting stale references
   navigateTo(id: string) {
-    // First try the identity registry (fast path)
     let el = this.identity.resolve(id);
-
-    // If not found or disconnected, do a fresh DOM scan
-    if (!el) {
-      el = this.findElementById(id);
-    }
+    if (!el) el = this.findElementById(id);
 
     if (!el) {
-      postToPanel({ type: 'NAVIGATE_FAILED', id, reason: 'Message element not found' });
+      this.emit({ type: 'NAVIGATE_FAILED', id, reason: 'Message element not found' });
       return;
     }
 
@@ -138,10 +161,9 @@ export class ExtractionOrchestrator {
     void el.offsetWidth;
     el.classList.add('aco-highlight');
     window.setTimeout(() => el!.classList.remove('aco-highlight'), HIGHLIGHT_MS);
-    postToPanel({ type: 'NAVIGATE_OK', id });
+    this.emit({ type: 'NAVIGATE_OK', id });
   }
 
-  /** Fix 3: find an element by re-scanning the current DOM */
   private findElementById(id: string): HTMLElement | null {
     const elements = this.adapter.findMessages();
     for (const el of elements) {
@@ -159,42 +181,47 @@ export class ExtractionOrchestrator {
     return null;
   }
 
-  // Fix 2: scroll to load all messages before extracting
-  private async extractWithScroll() {
+  private async extractWithScroll(generation: number) {
     this.extracting = true;
+    try {
+      const container = findScrollContainer();
+      if (container && container.scrollTop > 100) {
+        console.log('[AI Chat Organizer] Scrolling to load all messages...');
+        await scrollToLoadAll(container);
+      }
+      if (!this.isCurrent(generation)) return;
 
-    const container = findScrollContainer();
-    if (container && container.scrollTop > 100) {
-      console.log('[AI Chat Organizer] Scrolling to load all messages...');
-      await scrollToLoadAll(container);
+      const entries = this.collectEntries();
+      if (entries.length === 0) {
+        console.log('[AI Chat Organizer] No messages yet — waiting for MutationObserver');
+        return;
+      }
+      await this.sendEntries(entries, generation);
+    } finally {
+      if (this.isCurrent(generation)) this.extracting = false;
     }
-
-    const entries = this.collectEntries();
-    if (entries.length === 0) {
-      console.log('[AI Chat Organizer] No messages yet — waiting for MutationObserver');
-      this.extracting = false;
-      return;
-    }
-
-    await this.sendEntries(entries);
   }
 
-  private async extractFull() {
+  private async extractFull(generation: number) {
     this.extracting = true;
-    const entries = this.collectEntries();
-    if (entries.length === 0) {
-      this.extracting = false;
-      return;
+    try {
+      if (!this.isCurrent(generation)) return;
+      const entries = this.collectEntries();
+      if (entries.length === 0) return;
+      await this.sendEntries(entries, generation);
+    } finally {
+      if (this.isCurrent(generation)) this.extracting = false;
     }
-    await this.sendEntries(entries);
   }
 
-  private async sendEntries(entries: MessageEntry[]) {
-    postToPanel({ type: 'STATUS_UPDATE', status: 'reading' });
+  private async sendEntries(entries: MessageEntry[], generation: number) {
+    if (!this.isCurrent(generation)) return;
+    this.emit({ type: 'STATUS_UPDATE', status: 'reading' }, generation);
 
     for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+      if (!this.isCurrent(generation)) return;
       const batch = entries.slice(i, i + BATCH_SIZE);
-      postToPanel({ type: 'MESSAGE_BATCH', entries: batch });
+      this.emit({ type: 'MESSAGE_BATCH', entries: batch }, generation);
       for (const entry of batch) {
         this.lastSent.set(entry.id, {
           contentFingerprint: entry.contentFingerprint,
@@ -205,11 +232,10 @@ export class ExtractionOrchestrator {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    postToPanel({
+    this.emit({
       type: 'STATUS_UPDATE',
       status: entries.some((e) => e.status === 'generating') ? 'reading' : 'ready',
-    });
-    this.extracting = false;
+    }, generation);
   }
 
   private observe() {
@@ -225,17 +251,20 @@ export class ExtractionOrchestrator {
     });
   }
 
-  // Fix 1: poll for URL changes (SPA navigation doesn't always fire DOM mutations)
   private watchUrl() {
     if (this.urlPollTimer) clearInterval(this.urlPollTimer);
     this.urlPollTimer = setInterval(() => {
-      if (location.pathname !== this.lastPath) {
-        console.log('[AI Chat Organizer] URL changed — resetting for new conversation');
-        this.lastPath = location.pathname;
-        this.identity.reset();
-        this.lastSent.clear();
-        postToPanel({ type: 'OUTLINE_RESET' });
-        postToPanel({ type: 'STATUS_UPDATE', status: 'waiting' });
+      if (!isContextValid()) {
+        this.stop();
+        return;
+      }
+      const currentKey = conversationKey();
+      if (currentKey !== this.lastConversation) {
+        // Debounce: wait 300ms for ChatGPT to fully load the new conversation
+        if (this.debounceTimer) clearTimeout(this.debounceTimer);
+        this.debounceTimer = setTimeout(() => {
+          this.start();
+        }, 300);
       }
     }, URL_POLL_MS);
   }
@@ -243,41 +272,34 @@ export class ExtractionOrchestrator {
   private reconcile() {
     if (this.extracting) return;
 
-    // URL change handled by watchUrl() poll, but keep as safety net
-    if (location.pathname !== this.lastPath) {
-      this.lastPath = location.pathname;
-      this.identity.reset();
-      this.lastSent.clear();
-      postToPanel({ type: 'OUTLINE_RESET' });
-      postToPanel({ type: 'STATUS_UPDATE', status: 'waiting' });
+    if (conversationKey() !== this.lastConversation) {
+      this.start();
       return;
     }
 
     const entries = this.collectEntries();
 
     if (entries.length === 0) {
-      if (this.lastSent.size === 0) return; // still waiting for render
-      postToPanel({ type: 'STATUS_UPDATE', status: 'incomplete' });
+      if (this.lastSent.size === 0) return;
+      this.emit({ type: 'STATUS_UPDATE', status: 'incomplete' });
       return;
     }
 
-    // First time we find messages — full extraction
     if (this.lastSent.size === 0) {
-      void this.extractFull();
+      void this.extractFull(this.generation);
       return;
     }
 
-    // Incremental update
     for (const entry of entries) {
       const prev = this.lastSent.get(entry.id);
       if (!prev) {
-        postToPanel({ type: 'MESSAGE_ADDED', entry });
+        this.emit({ type: 'MESSAGE_ADDED', entry });
       } else if (
         prev.contentFingerprint !== entry.contentFingerprint ||
         prev.status !== entry.status ||
         prev.preview !== entry.preview
       ) {
-        postToPanel({ type: 'MESSAGE_UPDATED', entry });
+        this.emit({ type: 'MESSAGE_UPDATED', entry });
       }
       this.lastSent.set(entry.id, {
         contentFingerprint: entry.contentFingerprint,
@@ -286,7 +308,7 @@ export class ExtractionOrchestrator {
       });
     }
 
-    postToPanel({
+    this.emit({
       type: 'STATUS_UPDATE',
       status: entries.some((e) => e.status === 'generating') ? 'reading' : 'ready',
     });

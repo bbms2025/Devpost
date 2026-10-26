@@ -10,6 +10,7 @@ export interface MessageEntry {
   siteId?: string;             // data-message-id from ChatGPT, if available
   speaker: Speaker;
   preview: string;             // first ~120 chars of message text, trimmed
+  content: string;             // full message text (for bookmarks)
   contentFingerprint: string;  // normalized content for reconciliation
   status: EntryStatus;
 }

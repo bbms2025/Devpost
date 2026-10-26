@@ -9,7 +9,7 @@ Build mode: fast
 
 ## Slices
 
-- [ ] **1. Scaffold — extension loads in Chrome with a working side panel**
+- [x] **1. Scaffold — extension loads in Chrome with a working side panel**
   Becomes usable: The extension installs from `dist/`, the side panel opens on any ChatGPT page, and the background service worker responds to `GET_TAB_ID`. No extraction yet — just the skeleton with all plumbing verified.
   Why now: Build tooling, manifest v3, `@crxjs/vite-plugin` version compatibility, and the messaging architecture must all work before anything else can be built. This is the highest-risk slice.
   PRD ref: `prd.md > Screens and Layout`, `prd.md > Extraction Status` (waiting state)
@@ -29,7 +29,7 @@ Build mode: fast
   Learner check: Open a long ChatGPT conversation (50+ messages), open the panel — scan the outline and verify all your questions and ChatGPT's responses are listed in the correct order.
   Commit: `Slice 2: extract messages and render outline`
 
-- [ ] **3. Click a row — navigate to the correct message**
+- [x] **3. Click a row — navigate to the correct message**
   Becomes usable: Click any row in the outline — the main ChatGPT window scrolls directly to that message, a brief highlight confirms the destination, and the clicked row shows a selected state. Failed navigation shows a clear per-row error state.
   Why now: This completes the kernel. The outline is only useful if clicking it works reliably.
   PRD ref: `prd.md > Click-to-Navigate`, `prd.md > States and Boundaries`
@@ -39,7 +39,7 @@ Build mode: fast
   Learner check: Open a conversation with 50+ messages, click a question near the top of the outline, then one near the bottom — confirm you land on the exact correct message each time with no manual scrolling.
   Commit: `Slice 3: click-to-navigate with highlight and selected state`
 
-- [ ] **4. Dynamic updates — outline stays current as the conversation grows**
+- [x] **4. Dynamic updates — outline stays current as the conversation grows**
   Becomes usable: Send a new message while the panel is open — it appears in the outline. While ChatGPT responds, a "Generating…" indicator appears. When the response finishes, it becomes a clickable row. No duplicates, no lost entries, panel scroll position preserved unless already at the bottom.
   Why now: The outline is only trustworthy if it stays in sync. Without this, users must reopen the panel after every exchange.
   PRD ref: `prd.md > Dynamic Updates`, `prd.md > Extraction Status`
@@ -49,14 +49,54 @@ Build mode: fast
   Learner check: Open the panel, scroll to the middle of the outline, send a new message and watch the bottom of the outline — confirm the new entries appear without moving your scroll position, and that the completed response is clickable and navigates correctly.
   Commit: `Slice 4: dynamic updates with MutationObserver and streaming detection`
 
+- [x] **5. Bookmark persistence — save answers to IndexedDB**
+  Becomes usable: User clicks bookmark button on an answer → modal opens with suggested title → user creates a collection → clicks Save → answer is persisted to IndexedDB and modal shows success toast.
+  Why now: Core bookmark feature. Must work before building the Saved view.
+  PRD ref: `bookmark-feature-prd.md > Save Bookmark Modal`, `bookmark-feature-prd.md > Entry Point`
+  Spec ref: `bookmark-feature-spec.md > Components > BookmarkButton`, `bookmark-feature-spec.md > Components > SaveBookmarkModal`, `bookmark-feature-spec.md > Components > BookmarkService`
+  Build: Install and configure Dexie.js. Implement `BookmarkService` with schema, `createCollection`, `saveAnswer`, duplicate detection. Implement `BookmarkButton` component (rendered on assistant entries). Implement `SaveBookmarkModal` with title editing, collection selection, "Create new collection" flow. Implement `Toast` notification component. Wire bookmark button to modal, modal Save to `BookmarkService`. Extend `MessageEntry` to include full `content` field.
+  Verify (mechanical): Open panel, click bookmark on an answer → modal opens with pre-filled title. Create collection "Test Collection" → Save → toast shows "Saved to Test Collection". Open DevTools → Application → IndexedDB → AIBookmarks → verify collection and saved answer records exist. Click bookmark on same answer → Save to same collection → shows duplicate error. Click bookmark on different answer → Save to "Test Collection" → succeeds, second answer in same collection.
+  Learner check: Bookmark 3 different answers into a new collection, then check IndexedDB to confirm all records persisted correctly.
+  Commit: `Slice 5: bookmark persistence with IndexedDB and save modal`
+
+- [x] **6. Saved views modal — browse collections and answers**
+  Becomes usable: User clicks "Saved Views" button in header → modal opens showing collections → clicks a collection → sees saved answers → clicks an answer → views full content. Can delete answers and collections.
+  Why now: Saved bookmarks are only useful if you can view them later.
+  PRD ref: `bookmark-feature-prd.md > Saved Collection View`
+  Spec ref: `bookmark-feature-spec.md > Components > SavedViewsModal`, `bookmark-feature-spec.md > Components > Header (update)`
+  Build: Update `Header` to add "Saved Views" button next to "Load Chat". Implement `SavedViewsModal` with three levels: collections list → answers list → answer detail. Wire `BookmarkService.listCollections()`, `getAnswersByCollection()`. Implement delete operations (answer, collection with confirmation). Add empty states for no collections / no answers. Add back navigation between levels.
+  Verify (mechanical): Click "Saved Views" button → modal opens showing collections from Slice 5. Click collection → modal updates to show saved answers with correct titles. Click answer → modal shows full content in detail view. Click back button → navigates back through levels correctly. Delete answer → verify it's removed from list and IndexedDB. Delete collection → verify confirmation prompt, then collection and all answers removed. Click outside modal → modal closes, outline still visible.
+  Learner check: Save 3 answers across 2 collections, click "Saved Views", navigate through all three levels, then delete one answer and one collection to confirm everything updates correctly.
+  Commit: `Slice 6: saved views modal with collection and answer browsing`
+
+- [x] **7. Go to source — navigate from saved answer to original message**
+  Becomes usable: User views a saved answer in the modal while the source conversation is open → "Go to source" button appears → clicking it navigates to the original message in the ChatGPT page and closes the modal.
+  Why now: Completes the bookmark feature. Users can jump from saved knowledge back to its context.
+  PRD ref: `bookmark-feature-prd.md > Saved Collection View`
+  Spec ref: `bookmark-feature-spec.md > Components > SavedViewsModal`
+  Build: In `SavedViewsModal` detail view: detect if `conversationId` matches current conversation. If yes: resolve `messageId` via `MessageIdentityService`, show "Go to source" button. On click: send `NAVIGATE_TO` to content script, close modal, highlight message as usual. If resolution fails: show "Source unavailable".
+  Verify (mechanical): Save an answer from conversation A. Click "Saved Views" → open the collection → open the saved answer → "Go to source" button appears. Click button → verify navigation to original message and modal closes. Close conversation A, open conversation B, view same saved answer in modal → "Go to source" hidden. Reopen conversation A, view saved answer → "Go to source" reappears.
+  Learner check: Bookmark an answer, click "Saved Views", navigate to the answer, click "Go to source" — confirm it jumps to the exact message and closes the modal.
+  Commit: `Slice 7: go to source navigation from saved answers`
+
+- [x] **8. Export collections — download to Markdown, JSON, or plain text**
+  Becomes usable: User views collections list → clicks export dropdown on a collection → selects format (.md, .json, or .txt) → file downloads with all collection answers and metadata.
+  Why now: Completes the bookmark feature. Users can preserve saved knowledge outside the extension.
+  PRD ref: `bookmark-feature-prd.md > Export Collections`
+  Spec ref: `bookmark-feature-spec.md > Components > ExportService`
+  Build: Implement `ExportService` with `exportToMarkdown()`, `exportToJSON()`, `exportToText()`, and `downloadFile()` methods. Add export dropdown button to collection cards in `SavedViewsModal` collections view. Handle nested code fences, sanitize filenames, format dates. Generate filename as `{CollectionTitle}_export_{Date}.{ext}`. Show toast on successful export.
+  Verify (mechanical): Save 3-5 answers in a collection. Click export dropdown → select .md → file downloads. Open file, verify: collection title, export date, answer count, answer titles, full content preserved, source links included. Repeat for .json format → verify valid JSON structure. Repeat for .txt format → verify ASCII separators and plain text formatting. Try exporting empty collection → shows message "No answers to export". Try collection with special characters in title → filename is sanitized correctly.
+  Learner check: Export a collection with code blocks and nested Markdown to .md format, open it in VS Code or a text editor, confirm all formatting is preserved and code blocks don't break the document structure.
+  Commit: `Slice 8: export collections to MD/JSON/TXT`
+
 ## Hands-on Checkpoints
 
 - [x] Early usable behavior explored — after Slice 2 (outline renders on a real conversation)
-- [ ] Final kick-the-tires exploration and feedback completed
+- [x] Final kick-the-tires exploration and feedback completed
 
 ## Final Review
 
-- [ ] Final review complete — feedback resolved and learner confirms ready to ship
+- [x] Final review complete — feedback resolved and learner confirms ready to ship
 
 ## Code Tour and App Map
 

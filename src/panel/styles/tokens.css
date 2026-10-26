@@ -1,33 +1,56 @@
-/* Light theme (default) */
+/* ── Google Fonts: Nunito ── */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
+
+/* ── Dark theme (default — AI Chat Organizer navy/teal) ── */
 :root,
-[data-theme="light"] {
-  --bg-primary: #ffffff;
-  --bg-hover: #f5f5f5;
-  --bg-selected: #ebebeb;
-  --text-primary: #0d0d0d;
-  --text-secondary: #6e6e6e;
-  --divider: #e5e5e5;
-  --accent: #2563eb;
-  --status-text: #6e6e6e;
-  --highlight-color: rgba(37, 99, 235, 0.25);
-}
-
-/* Dark theme */
 [data-theme="dark"] {
-  --bg-primary: #1e1e1e;
-  --bg-hover: #2a2a2a;
-  --bg-selected: #333333;
-  --text-primary: #ececec;
-  --text-secondary: #8e8e8e;
-  --divider: #2f2f2f;
-  --accent: #3b82f6;
-  --status-text: #8e8e8e;
-  --highlight-color: rgba(59, 130, 246, 0.25);
+  --bg-primary: #131c2e;
+  --bg-secondary: #1a2540;
+  --bg-card: #1e2d47;
+  --bg-hover: #243352;
+  --bg-selected: #2a3d60;
+  --text-primary: #e8edf5;
+  --text-secondary: #7a90b0;
+  --divider: #253148;
+  --accent: #38bdf8;
+  --accent-glow: rgba(56, 189, 248, 0.18);
+  --accent-2: #2dd4bf;
+  --status-text: #7a90b0;
+  --highlight-color: rgba(56, 189, 248, 0.22);
+  --user-bg: rgba(45, 212, 191, 0.07);
+  --user-bg-hover: rgba(45, 212, 191, 0.13);
+  --user-bg-selected: rgba(45, 212, 191, 0.20);
+  --success: #2dd4bf;
+  --danger: #f87171;
+  --warning: #fbbf24;
 }
 
-/* Navigation highlight animation — applied by content script to ChatGPT message elements */
+/* ── Light theme ── */
+[data-theme="light"] {
+  --bg-primary: #f0f6ff;
+  --bg-secondary: #e4eef8;
+  --bg-card: #ffffff;
+  --bg-hover: #ddeaf7;
+  --bg-selected: #cde0f5;
+  --text-primary: #0f1d30;
+  --text-secondary: #4a6080;
+  --divider: #c8d9ec;
+  --accent: #0ea5e9;
+  --accent-glow: rgba(14, 165, 233, 0.15);
+  --accent-2: #0d9488;
+  --status-text: #4a6080;
+  --highlight-color: rgba(14, 165, 233, 0.20);
+  --user-bg: rgba(13, 148, 136, 0.06);
+  --user-bg-hover: rgba(13, 148, 136, 0.11);
+  --user-bg-selected: rgba(13, 148, 136, 0.17);
+  --success: #0d9488;
+  --danger: #dc2626;
+  --warning: #d97706;
+}
+
+/* ── Navigation highlight animation (injected into ChatGPT page) ── */
 @keyframes aco-highlight-fade {
-  0%   { background-color: var(--highlight-color, rgba(59, 130, 246, 0.3)); }
+  0%   { background-color: var(--highlight-color, rgba(56, 189, 248, 0.25)); }
   100% { background-color: transparent; }
 }
 
